@@ -23,16 +23,16 @@ ScreenInit *g_screenInitSetup = nullptr;
 bool g_disableFogOfWar = false;
 
 DWORD WINAPI MainThread(LPVOID lpParam) {
-#ifdef __DEBUG__
+  //#ifdef __DEBUG__
   rw::debug::alloc_console();
-#endif
+  //#endif
   MH_Initialize();
   const auto mi = rw::mem::get_module_info("GameAssembly.dll");
 
-  g_resizeCamera = reinterpret_cast<ProCamera2DPixelPerfect_ResizeCameraToPixelPerfect>(mi.m_begin + 0x27E5940);
-  g_updateCameraOffset = reinterpret_cast<CameraManager_UpdateCameraOffset>(mi.m_begin + 0x13fbd20);
+  g_resizeCamera = reinterpret_cast<ProCamera2DPixelPerfect_ResizeCameraToPixelPerfect>(mi.m_begin + 0x2751510);
+  g_updateCameraOffset = reinterpret_cast<CameraManager_UpdateCameraOffset>(mi.m_begin + 0x1218170);
 
-  g_gotMessageHandlerHook.m_install(mi.m_begin + 0x18f3de0, [](auto self, auto rawPacket, auto method) -> RWHOOK {
+  g_gotMessageHandlerHook.m_install(mi.m_begin + 0x1710250, [](auto self, auto rawPacket, auto method) -> RWHOOK {
     auto packetID = rawPacket->klass->vtable.getId.ptr(rawPacket);
 #if __DEBUG__
     auto packetName = copy_string_utf8(packet->klass->vtable.toString.ptr(rawPacket));
@@ -41,7 +41,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     return g_gotMessageHandlerHook.m_getTrampoline()(self, rawPacket, method);
   });
 
-  g_sendMessageHandlerHook.m_install(mi.m_begin + 0x1520890, [](auto self, auto rawPacket, auto method) -> RWHOOK {
+  g_sendMessageHandlerHook.m_install(mi.m_begin + 0x1711CB0, [](auto self, auto rawPacket, auto method) -> RWHOOK {
     auto packetID = rawPacket->base_fields.packetId;
 #if __DEBUG__
     auto packetName = copy_string_utf8(rawPacket->klass->vtable.toString.ptr(rawPacket));
@@ -80,7 +80,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     return g_sendMessageHandlerHook.m_getTrampoline()(self, rawPacket, method);
   });
 
-  g_cameraManagerUpdateHook.m_install(mi.m_begin + 0x13FD830, [](auto self, auto method) -> RWHOOK {
+  g_cameraManagerUpdateHook.m_install(mi.m_begin + 0x1219C80, [](auto self, auto method) -> RWHOOK {
     if (g_disableFogOfWar && g_screenInitSetup) {
       g_screenInitSetup->fields.unknown0 = 625.0f;
       g_screenInitSetup->fields.unknown1 = 25.0f;
@@ -89,7 +89,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     return g_cameraManagerUpdateHook.m_getTrampoline()(self, method);
   });
 
-  g_screenInitSetupHook.m_install(mi.m_begin + 0x1F8EDB0, [](auto self, auto method) -> RWHOOK {
+  g_screenInitSetupHook.m_install(mi.m_begin + 0x1E06C80, [](auto self, auto method) -> RWHOOK {
     g_screenInitSetup = self;
     return g_screenInitSetupHook.m_getTrampoline()(self, method);
   });

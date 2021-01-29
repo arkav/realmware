@@ -80,8 +80,6 @@ struct CameraManager {
   void *monitor;
   _CameraManager_Fields fields;
 };
-// ProCamera2DPixelPerfect_set_Zoom
-// using ProCamera2DPixelPerfect_set_Zoom = void *(__stdcall *)(ProCamera2DPixelPerfect *, int32_t, MethodInfo *);
 // ProCamera2DPixelPerfect_ResizeCameraToPixelPerfect
 using ProCamera2DPixelPerfect_ResizeCameraToPixelPerfect = void *(__stdcall *)(ProCamera2DPixelPerfect *, MethodInfo *);
 // CameraManger_ONKBCEJOCHD (called from ZoomIn and ZoomOut)

@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "memory.hh"
+#include "offsets.hh"
 #include "structs.hh"
 
 using namespace rw::structs;
@@ -14,6 +15,7 @@ rw::mem::hook::detour<SocketManager *, OutgoingPacket *, MethodInfo *> g_sendMes
 // DecaGames_RotMG_CameraManager__Update
 rw::mem::hook::detour<CameraManager *, MethodInfo *> g_cameraManagerUpdateHook;
 CameraManager *g_cameraManager = nullptr;
+
 ProCamera2DPixelPerfect_ResizeCameraToPixelPerfect g_resizeCamera = nullptr;
 CameraManager_UpdateCameraOffset g_updateCameraOffset = nullptr;
 float g_originalPixelsPerUnit = 0.0f;
@@ -29,10 +31,11 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
   MH_Initialize();
   const auto mi = rw::mem::get_module_info("GameAssembly.dll");
 
-  g_resizeCamera = reinterpret_cast<ProCamera2DPixelPerfect_ResizeCameraToPixelPerfect>(mi.m_begin + 0x2751510);
-  g_updateCameraOffset = reinterpret_cast<CameraManager_UpdateCameraOffset>(mi.m_begin + 0x1218170);
+  g_resizeCamera =
+      reinterpret_cast<ProCamera2DPixelPerfect_ResizeCameraToPixelPerfect>(mi.m_begin + OFFSET_PC2D_RESIZE);
+  g_updateCameraOffset = reinterpret_cast<CameraManager_UpdateCameraOffset>(mi.m_begin + OFFSET_CAMERA_OFFSET_UPDATE);
 
-  g_gotMessageHandlerHook.m_install(mi.m_begin + 0x1710250, [](auto self, auto rawPacket, auto method) -> RWHOOK {
+  g_gotMessageHandlerHook.m_install(mi.m_begin + OFFSET_GOT_MSG, [](auto self, auto rawPacket, auto method) -> RWHOOK {
     auto packetID = rawPacket->klass->vtable.getId.ptr(rawPacket);
 #if __DEBUG__
     auto packetName = copy_string_utf8(packet->klass->vtable.toString.ptr(rawPacket));
@@ -41,46 +44,47 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     return g_gotMessageHandlerHook.m_getTrampoline()(self, rawPacket, method);
   });
 
-  g_sendMessageHandlerHook.m_install(mi.m_begin + 0x1711CB0, [](auto self, auto rawPacket, auto method) -> RWHOOK {
-    auto packetID = rawPacket->base_fields.packetId;
+  g_sendMessageHandlerHook.m_install(
+      mi.m_begin + OFFSET_SEND_MSG, [](auto self, auto rawPacket, auto method) -> RWHOOK {
+        auto packetID = rawPacket->base_fields.packetId;
 #if __DEBUG__
-    auto packetName = copy_string_utf8(rawPacket->klass->vtable.toString.ptr(rawPacket));
-    std::cout << "sent packet! " << packetName << " id: " << (int)packetID << std::endl;
+        auto packetName = copy_string_utf8(rawPacket->klass->vtable.toString.ptr(rawPacket));
+        std::cout << "sent packet! " << packetName << " id: " << (int)packetID << std::endl;
 #endif
-    if (packetID == packets::ID::SendText) {
-      auto packet = static_cast<packets::outgoing::Text *>(rawPacket);
-      auto text = copy_string_utf8(packet->fields.text);
-      if (text[0] == '/') {
-        if (text.substr(0, 3) == "/ms") {
-          try {
-            auto mscale = std::stof(text.substr(3, text.length() - 1));
-            if (g_cameraManager) {
-              if (g_originalPixelsPerUnit == 0)
-                g_originalPixelsPerUnit = g_cameraManager->fields.cameraPixelPerfect->fields.pixelsPerUnit;
-              g_cameraManager->fields.cameraPixelPerfect->fields.pixelsPerUnit = g_originalPixelsPerUnit * mscale;
-              // update camera and offset
-              g_resizeCamera(g_cameraManager->fields.cameraPixelPerfect, nullptr);
-              g_updateCameraOffset(g_cameraManager, nullptr);
-              std::cout << "set mscale to: " << mscale << std::endl;
+        if (packetID == packets::ID::SendText) {
+          auto packet = static_cast<packets::outgoing::Text *>(rawPacket);
+          auto text = copy_string_utf8(packet->fields.text);
+          if (text[0] == '/') {
+            if (text.substr(0, 3) == "/ms") {
+              try {
+                auto mscale = std::stof(text.substr(3, text.length() - 1));
+                if (g_cameraManager) {
+                  if (g_originalPixelsPerUnit == 0)
+                    g_originalPixelsPerUnit = g_cameraManager->fields.cameraPixelPerfect->fields.pixelsPerUnit;
+                  g_cameraManager->fields.cameraPixelPerfect->fields.pixelsPerUnit = g_originalPixelsPerUnit * mscale;
+                  // update camera and offset
+                  g_resizeCamera(g_cameraManager->fields.cameraPixelPerfect, nullptr);
+                  g_updateCameraOffset(g_cameraManager, nullptr);
+                  std::cout << "set mscale to: " << mscale << std::endl;
+                  return nullptr;
+                }
+              } catch (std::invalid_argument) {
+                std::cout << "invalid integral agument passed to /ms <int32>" << std::endl;
+                return nullptr;
+              }
+            }
+
+            if (text == "/tf") {
+              g_disableFogOfWar = !g_disableFogOfWar;
+              std::cout << "fog of war: " << (g_disableFogOfWar ? "off" : "on") << std::endl;
               return nullptr;
             }
-          } catch (std::invalid_argument) {
-            std::cout << "invalid integral agument passed to /ms <int32>" << std::endl;
-            return nullptr;
           }
         }
+        return g_sendMessageHandlerHook.m_getTrampoline()(self, rawPacket, method);
+      });
 
-        if (text == "/tf") {
-          g_disableFogOfWar = !g_disableFogOfWar;
-          std::cout << "fog of war: " << (g_disableFogOfWar ? "off" : "on") << std::endl;
-          return nullptr;
-        }
-      }
-    }
-    return g_sendMessageHandlerHook.m_getTrampoline()(self, rawPacket, method);
-  });
-
-  g_cameraManagerUpdateHook.m_install(mi.m_begin + 0x1219C80, [](auto self, auto method) -> RWHOOK {
+  g_cameraManagerUpdateHook.m_install(mi.m_begin + OFFSET_CAMERA_UPDATE, [](auto self, auto method) -> RWHOOK {
     if (g_disableFogOfWar && g_screenInitSetup) {
       g_screenInitSetup->fields.unknown0 = 625.0f;
       g_screenInitSetup->fields.unknown1 = 25.0f;
@@ -89,7 +93,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     return g_cameraManagerUpdateHook.m_getTrampoline()(self, method);
   });
 
-  g_screenInitSetupHook.m_install(mi.m_begin + 0x1E06C80, [](auto self, auto method) -> RWHOOK {
+  g_screenInitSetupHook.m_install(mi.m_begin + OFFSET_INIT_SCREEN, [](auto self, auto method) -> RWHOOK {
     g_screenInitSetup = self;
     return g_screenInitSetupHook.m_getTrampoline()(self, method);
   });
